@@ -8,7 +8,7 @@ from flask_swagger import swagger
 from flask_cors import CORS
 from utils import APIException, generate_sitemap
 from admin import setup_admin
-from models import db, User
+from models import db, User, Favorite
 #from models import Person
 
 app = Flask(__name__)
@@ -32,9 +32,72 @@ def sitemap():
 
 @app.route('/user', methods=['GET'])
 def handle_hello():
-
+    all_users = User.query.all()
+    all_users = list(map(lambda elem: elem.serialize(), all_users))
     response_body = {
-        "msg": "Hello, this is your GET /user response "
+        "users": all_users
+    }
+
+    return jsonify(response_body), 200
+
+@app.route('/<user>/favorites', methods=['GET'])
+def getFavorites(user):
+    single_user = User.query.filter_by(username=user).first()
+    if single_user is None:
+        raise APIException('User not found', status_code=404) 
+    favorites = Favorite.query.filter_by(username=user)
+    all_favorites = list(map(lambda elem: elem.serialize(), favorites))
+    response_body = {
+        "All favorites": all_favorites
+    }
+
+    return jsonify(response_body), 200
+
+@app.route('/favorite/planet/<int:id>', methods=['POST', 'DELETE'])
+
+def addPlanet(id):
+    request_body = request.get_json()
+    if request_body is None or request_body == {}:
+        raise APIException('Data not found', status_code=404)
+    if request.method == 'POST':
+        planet = Favorite(name=request_body['name'], entity_type='planet', entity_id=id, username=request_body['username'])
+        db.session.add(planet)
+        db.session.commit()
+    if request.method == 'DELETE':
+        planetRemoved = Favorite.query.filter_by( entity_type='planet', entity_id=id, username=request_body['username']).first()
+        # if planetRemoved is None:
+        #     raise APIException('Planet not found', status_code=404)  
+        db.session.delete(planetRemoved)
+        db.session.commit()
+    favorites = Favorite.query.filter_by(username=request_body['username'])
+    all_favorites=list(map(lambda elem: elem.serialize(), favorites))
+    response_body = {
+        "favorites": all_favorites
+    }
+
+    return jsonify(response_body), 200
+
+
+@app.route('/favorite/people/<int:id>', methods=['POST', 'DELETE'])
+
+def addPerson(id):
+    request_body = request.get_json()
+    if request_body is None or request_body == {}:
+        raise APIException('Data not found', status_code=404)
+    if request.method == 'POST':
+        person = Favorite(name=request_body['name'], entity_type='person', entity_id=id, username=request_body['username'])
+        db.session.add(person)
+        db.session.commit()
+    if request.method == 'DELETE':
+        personRemoved = Favorite.query.filter_by( entity_type='person', entity_id=id, username=request_body['username']).first()
+        # if personRemoved is None:
+        #     raise APIException('person not found', status_code=404)  
+        db.session.delete(personRemoved)
+        db.session.commit()
+    favorites = Favorite.query.filter_by(username=request_body['username'])
+    all_favorites=list(map(lambda elem: elem.serialize(), favorites))
+    response_body = {
+        "favorites": all_favorites
     }
 
     return jsonify(response_body), 200

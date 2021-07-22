@@ -9,9 +9,17 @@ from flask_cors import CORS
 from utils import APIException, generate_sitemap
 from admin import setup_admin
 from models import db, User, Favorite
+from flask_jwt_extended import create_access_token
+from flask_jwt_extended import get_jwt_identity
+from flask_jwt_extended import jwt_required
+from flask_jwt_extended import JWTManager
+import datetime
 #from models import Person
-
 app = Flask(__name__)
+app.config["JWT_SECRET_KEY"] = "super-secret" # Change this!
+jwt = JWTManager(app)
+
+
 app.url_map.strict_slashes = False
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DB_CONNECTION_STRING')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
@@ -29,6 +37,30 @@ def handle_invalid_usage(error):
 @app.route('/')
 def sitemap():
     return generate_sitemap(app)
+
+@app.route('/bear', methods=['GET'])
+@jwt_required() 
+def handle_bear(): 
+    current_user_id = get_jwt_identity()
+    user = User.filter.get(current_user_id)
+    
+    return jsonify({"id": user.id, "username": user.username }), 200
+
+@app.route("/login", methods=["POST"])
+def create_token():
+    credentials = request.get_json()
+    username = credentials.get("username", None)
+    password = credentials.get("password", None)
+    # Query your database for username and password
+    user = User.query.filter_by(username=username, password=password).first()
+    if user is None:
+        # the user was not found on the database
+        return jsonify({"msg": "Invalid username or password"}), 401
+    
+    # create a new token with the user id inside
+    expires = datetime.timedelta(days=7)
+    access_token = create_access_token(identity=user.username,expires_delta=expires)
+    return jsonify({ "token": access_token, "user_id": user.username })
 
 @app.route('/user', methods=['GET'])
 def handle_hello():
@@ -48,7 +80,7 @@ def getFavorites(user):
     favorites = Favorite.query.filter_by(username=user)
     all_favorites = list(map(lambda elem: elem.serialize(), favorites))
     response_body = {
-        "All favorites": all_favorites
+        "all_favorites": all_favorites
     }
 
     return jsonify(response_body), 200
@@ -85,6 +117,9 @@ def addPerson(id):
     if request_body is None or request_body == {}:
         raise APIException('Data not found', status_code=404)
     if request.method == 'POST':
+        record = Favorite.query.filter_by(username=request_body['username'], name=request_body['name']).first()
+        if record:
+            raise APIException('Duplicate record found', status_code=418)
         person = Favorite(name=request_body['name'], entity_type='person', entity_id=id, username=request_body['username'])
         db.session.add(person)
         db.session.commit()
